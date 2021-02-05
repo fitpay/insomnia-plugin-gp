@@ -121,17 +121,19 @@ const encryptRequest = async(context) => {
 }
 
 const decryptResponse = async(context) => {
-    if (context.response.getBody().length > 0) {
-        console.log("well", context.response.getBody());
-        var body = JSON.parse(context.response.getBody());
-        if (body.encryptedData) {
-            const data = await session({context});
-            var ss = JSON.parse(decodeMessage(data.ss));
-            var payload = encryptor.decrypt(body.encryptedData, ss);
-            console.log("payload", payload);
-    
-            body.encryptedData = payload;
-            context.response.setBody(JSON.stringify(body));
+    // if this isn't json, there isn't much we can do
+    if (context.response.getHeader('content-type') === 'application/json') {
+        if (context.response.getBody().length > 0) {
+            var body = JSON.parse(context.response.getBody());
+            if (body.encryptedData) {
+                const data = await session({context});
+                var ss = JSON.parse(decodeMessage(data.ss));
+                var payload = encryptor.decrypt(body.encryptedData, ss);
+                console.log("payload", payload);
+        
+                body.encryptedData = payload;
+                context.response.setBody(JSON.stringify(body));
+            }
         }
     }
 }
