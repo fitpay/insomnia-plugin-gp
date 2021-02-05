@@ -46,10 +46,10 @@ const session = async ({context}) => {
 
     if (str) {
         var data = JSON.parse(str);
-        console.log('returning cached session', data);
+        console.log('[insomnia-plugin-gp] returning cached session', data);
         return data;
     } else {
-        console.log('generating session key');
+        console.log('[insomnia-plugin-gp] generating gp session key');
         var keyPair = sjcl.ecc.elGamal.generateKeys(256);
         var publicKey = keyPair.pub.get();
         var key = hex.fromBits(publicKey.x.concat(publicKey.y));
@@ -76,7 +76,7 @@ const session = async ({context}) => {
         if (res.status == 201) {
             var r = await res.json();
 
-            console.log("key registration response", r);
+            console.log('[insomnia-plugin-gp] key registration response', r);
             data.kxid = r.keyId;
 
             var serverPubKey = serializeEncodedPubKey(r.serverPublicKey);
@@ -85,10 +85,10 @@ const session = async ({context}) => {
             data.spk = res.serverPublicKey;
     
             context.store.setItem('gp_key', JSON.stringify(data));
-            console.log("key registration completed", data);
+            console.log('[insomnia-plugin-gp] key registration completed', data);
             return data;
         } else {
-            console.error("error requesting key registration", res);
+            console.error('[insomnia-plugin-gp] error requesting key registration', res);
         }
     }
 }
@@ -105,7 +105,7 @@ const encryptRequest = async(context) => {
         var requestBody = JSON.parse(body.text);
 
         if (requestBody.encryptedData) {
-            console.log('encrypt request: ', data.kxid);
+            console.log('[insomnia-plugin-gp] encrypt request: ', data.kxid);
 
             var ss = JSON.parse(decodeMessage(data.ss));
             var encryptedData = encryptor.encrypt(
@@ -114,10 +114,15 @@ const encryptRequest = async(context) => {
                 { kid: data.kxid }
             );
             requestBody.encryptedData = encryptedData;
-            console.log('new body', requestBody);
             body.text = JSON.stringify(requestBody);
         }
     }
+}
+
+function transformEncryptedData(sharedSecret, encryptedData) {
+    if (sharedSecret === undefined || encryptedData === undefined) return;
+
+    return encryptor.decrypt(encryptedData, sharedSecret);
 }
 
 const decryptResponse = async(context) => {
@@ -125,15 +130,23 @@ const decryptResponse = async(context) => {
     if (context.response.getHeader('content-type') === 'application/json') {
         if (context.response.getBody().length > 0) {
             var body = JSON.parse(context.response.getBody());
+
+            const keyData = await session({context});
+            var sharedSecret = JSON.parse(decodeMessage(keyData.ss));
+
             if (body.encryptedData) {
-                const data = await session({context});
-                var ss = JSON.parse(decodeMessage(data.ss));
-                var payload = encryptor.decrypt(body.encryptedData, ss);
-                console.log("payload", payload);
-        
-                body.encryptedData = payload;
-                context.response.setBody(JSON.stringify(body));
+                body.encryptedData = transformEncryptedData(sharedSecret, body.encryptedData)
             }
+
+            if (body.results) {
+                for (var i=0; i<body.results.length; i++) {
+                    if (body.results[i].encryptedData) {
+                        body.results[i].encryptedData = transformEncryptedData(sharedSecret, body.results[i].encryptedData)
+                    }
+                }
+            }
+
+            context.response.setBody(JSON.stringify(body));
         }
     }
 }
