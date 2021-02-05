@@ -161,3 +161,14 @@ module.exports.workspaceActions = [{
 
 module.exports.requestHooks = [encryptRequest];
 module.exports.responseHooks = [decryptResponse];
+
+module.exports.templateTags = [{
+    name: 'gpKeyId',
+    displayName: 'gpKeyId',
+    description: 'Current Garmin Pay session keyId, if exists',
+    args: [],
+    async run (context) {
+        const keyData = await session({context});
+        return keyData.kxid;
+    }
+}];
