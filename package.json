@@ -1,0 +1,23 @@
+{
+    "name": "insomna-plugin-gp",
+    "version": "1.0.0",             
+    "main": "plugin.js",              
+    
+    "insomnia": {                    
+      "name": "Garmin Pay",      
+      "displayName": "Garmin Pay Security", 
+      "description": "...",  
+
+      "publisher": {
+        "name": "Scott Stevelinck"
+      },
+  
+      "applications": { 
+        "designer": "*",
+        "core": "*",
+        "cli": "*"
+       }
+    },
+    "dependencies": [],
+    "devDependencies": []
+  }
