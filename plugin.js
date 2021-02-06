@@ -1,5 +1,5 @@
-import { codec, ecc } from './sjcl.js';
-import { encrypt, decrypt, serializeEncodedPubKey, encodeMessage, decodeMessage } from './encryptor.js';
+var sjcl = require('./sjcl');
+var encryptor = require('./encryptor');
 
 const session = async ({ context }) => {
   var str = await context.store.getItem('gp_key');
@@ -10,15 +10,15 @@ const session = async ({ context }) => {
     return data;
   } else {
     console.log('[insomnia-plugin-gp] generating gp session key');
-    var keyPair = ecc.elGamal.generateKeys(256);
+    var keyPair = sjcl.ecc.elGamal.generateKeys(256);
     var publicKey = keyPair.pub.get();
-    var key = hex.fromBits(publicKey.x.concat(publicKey.y));
-    var encodedPublicKey = ans1PubKeyEncoding + key;
+    var key = sjcl.codec.hex.fromBits(publicKey.x.concat(publicKey.y));
+    var encodedPublicKey = encryptor.ans1PubKeyEncoding + key;
 
     var data = {
       epk: encodedPublicKey,
-      pk: codec.base64.fromBits(publicKey.x.concat(publicKey.y)),
-      sk: codec.base64.fromBits(keyPair.sec.get()),
+      pk: sjcl.codec.base64.fromBits(publicKey.x.concat(publicKey.y)),
+      sk: sjcl.codec.base64.fromBits(keyPair.sec.get()),
     };
 
     const request = {
@@ -32,6 +32,7 @@ const session = async ({ context }) => {
       }),
     };
 
+    console.log('[insomnia-plugin-gp] registering gp session key');
     var res = await fetch(`${context.request.getEnvironmentVariable('apiUrl')}/config/encryptionKeys`, request);
     if (res.status == 201) {
       var r = await res.json();
@@ -39,9 +40,9 @@ const session = async ({ context }) => {
       console.log('[insomnia-plugin-gp] key registration response', r);
       data.kxid = r.keyId;
 
-      var serverPubKey = serializeEncodedPubKey(r.serverPublicKey);
+      var serverPubKey = encryptor.serializeEncodedPubKey(r.serverPublicKey);
       var sharedSecret = keyPair.sec.dhJavaEc(serverPubKey);
-      data.ss = encodeMessage(JSON.stringify(sharedSecret));
+      data.ss = encryptor.encodeMessage(JSON.stringify(sharedSecret));
       data.spk = res.serverPublicKey;
 
       context.store.setItem('gp_key', JSON.stringify(data));
@@ -67,8 +68,8 @@ const encryptRequest = async (context) => {
     if (requestBody.encryptedData) {
       console.log('[insomnia-plugin-gp] encrypt request: ', data.kxid);
 
-      var ss = JSON.parse(decodeMessage(data.ss));
-      var encryptedData = encrypt(requestBody.encryptedData, ss, { kid: data.kxid });
+      var ss = JSON.parse(encryptor.decodeMessage(data.ss));
+      var encryptedData = encryptor.encrypt(requestBody.encryptedData, ss, { kid: data.kxid });
       requestBody.encryptedData = encryptedData;
       body.text = JSON.stringify(requestBody);
     }
@@ -78,7 +79,7 @@ const encryptRequest = async (context) => {
 function transformEncryptedData(sharedSecret, encryptedData) {
   if (sharedSecret === undefined || encryptedData === undefined) return;
 
-  return decrypt(encryptedData, sharedSecret);
+  return encryptor.decrypt(encryptedData, sharedSecret);
 }
 
 const decryptResponse = async (context) => {
@@ -88,7 +89,7 @@ const decryptResponse = async (context) => {
       var body = JSON.parse(context.response.getBody());
 
       const keyData = await session({ context });
-      var sharedSecret = JSON.parse(decodeMessage(keyData.ss));
+      var sharedSecret = JSON.parse(encryptor.decodeMessage(keyData.ss));
 
       if (body.encryptedData) {
         body.encryptedData = transformEncryptedData(sharedSecret, body.encryptedData);
@@ -107,7 +108,7 @@ const decryptResponse = async (context) => {
   }
 };
 
-export const workspaceActions = [
+module.exports.workspaceActions = [
   {
     label: 'GP - Clear Security Session',
     icon: 'fa-trash',
@@ -117,10 +118,10 @@ export const workspaceActions = [
   },
 ];
 
-export const requestHooks = [encryptRequest];
-export const responseHooks = [decryptResponse];
+module.exports.requestHooks = [encryptRequest];
+module.exports.responseHooks = [decryptResponse];
 
-export const templateTags = [
+module.exports.templateTags = [
   {
     name: 'gpKeyId',
     displayName: 'gpKeyId',

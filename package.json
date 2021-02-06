@@ -2,7 +2,8 @@
     "name": "insomna-plugin-gp",
     "version": "1.0.0",             
     "main": "plugin.js",              
-    
+    "type": "commonjs",
+
     "author": {
       "name": "Scott Stevelinck"
     },
