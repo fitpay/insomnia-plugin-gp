@@ -3,21 +3,26 @@
     "version": "1.0.0",             
     "main": "plugin.js",              
     
-    "insomnia": {                    
-      "name": "Garmin Pay",      
-      "displayName": "Garmin Pay Security", 
-      "description": "...",  
+    "author": {
+      "name": "Scott Stevelinck"
+    },
+    "license": "MIT",
+    "source": "https://github.com/fitpay/insomnia-plugin-gp",
+    "dependencies": {},
+    "devDependencies": {},
 
-      "publisher": {
-        "name": "Scott Stevelinck"
-      },
   
+    "insomnia": {                    
+      "name": "Garmin Pay Insomnia PlugIn",      
+      "displayName": "Garmin Pay", 
+      "description": "Plugin to provide payload level encryption that the Garmin Pay API utilizes for Insomnia",
+      "publisher": {
+        "name": "Garmin Boulder"
+      },
       "applications": { 
         "designer": "*",
         "core": "*",
         "cli": "*"
        }
-    },
-    "dependencies": [],
-    "devDependencies": []
+    }
   }
