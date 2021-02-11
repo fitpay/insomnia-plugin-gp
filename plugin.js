@@ -1,20 +1,64 @@
 var sjcl = require('./sjcl');
 var encryptor = require('./encryptor');
 
-const session = async ({ context }) => {
+var defaultConfiguration = {
+  apiUrlEnvironmentVariable: 'apiUrl',
+  keyExpirationBuffer: 60000,
+};
+
+async function configuration(context) {
+  const str = await context.store.getItem('gp-api:config');
+
+  var oldConfig = undefined;
+  if (str) {
+    oldConfig = JSON.parse(str);
+  }
+
+  return oldConfig || defaultConfiguration;
+}
+
+async function changeConfiguration(context) {
+  const oldConfig = await context.store.getItem('gp-api:config');
+
+  // Prompt for the configuration
+  try {
+    var config = await context.app.prompt('GP - Configuration', {
+      label: 'JSON string',
+      defaultValue: oldConfig || JSON.stringify(defaultConfiguration),
+      submitName: 'Save',
+      cancelable: true,
+    });
+  } catch (e) {
+    return false;
+  }
+
+  // Validate the JSON config
+  try {
+    JSON.parse(config);
+  } catch (e) {
+    context.app.alert('Invalid JSON!', 'Error: ' + e.message);
+    return false;
+  }
+
+  await context.store.setItem('gp-api:config', config);
+}
+
+async function session(context) {
   var str = await context.store.getItem('gp-api:key');
 
   // if we have a cached key, let's make sure it's still useable
   if (str) {
     var data = JSON.parse(str);
+    var config = await configuration(context);
 
     // if the server gave us an expirationTs, then use that to determine if the key is still good
     // if not, then validate the key is still good!
+
     if (data.expirationTsEpoch) {
-      var expirationTs = new Date(date.expirationTsEpoch);
+      var expirationTs = new Date(data.expirationTsEpoch);
 
       // use a bit of a buffer (60s) to account for clock drift
-      if (new Date().getTime() - 60000 < expirationTs) {
+      if (new Date().getTime() - config.keyExpirationBuffer < expirationTs) {
         console.log('[insomnia-plugin-gp] returning cached session', data);
         return data;
       } else {
@@ -22,7 +66,10 @@ const session = async ({ context }) => {
       }
     } else {
       // no expirationTs returned by the server, so force a validation to see if the key is still good
-      var res = await fetch(`${context.request.getEnvironmentVariable('apiUrl')}/config/encryptionKeys/${data.kxid}`);
+      console.log('[insomnia-plugin-gp] no expirationTs returned by server, verifying key', data);
+      var res = await fetch(
+        `${context.request.getEnvironmentVariable(config.apiUrlEnvironmentVariable)}/config/encryptionKeys/${data.kxid}`
+      );
       if (res.status == 200) {
         console.log('[insomnia-plugin-gp] returning cached session', data);
         return data;
@@ -44,7 +91,6 @@ const session = async ({ context }) => {
     epk: encodedPublicKey,
     pk: sjcl.codec.base64.fromBits(publicKey.x.concat(publicKey.y)),
     sk: sjcl.codec.base64.fromBits(keyPair.sec.get()),
-    timeValidated: new Date().getTime(),
   };
 
   const request = {
@@ -58,19 +104,25 @@ const session = async ({ context }) => {
     }),
   };
 
+  var config = await configuration(context);
+
   console.log('[insomnia-plugin-gp] registering gp session key');
-  var res = await fetch(`${context.request.getEnvironmentVariable('apiUrl')}/config/encryptionKeys`, request);
+  var res = await fetch(
+    `${context.request.getEnvironmentVariable(config.apiUrlEnvironmentVariable)}/config/encryptionKeys`,
+    request
+  );
+
   if (res.status == 201) {
     var r = await res.json();
 
     console.log('[insomnia-plugin-gp] key registration response', r);
     data.kxid = r.keyId;
+    data.expirationTsEpoch = r.expirationTsEpoch;
 
     var serverPubKey = encryptor.serializeEncodedPubKey(r.serverPublicKey);
     var sharedSecret = keyPair.sec.dhJavaEc(serverPubKey);
     data.ss = encryptor.encodeMessage(JSON.stringify(sharedSecret));
     data.spk = res.serverPublicKey;
-    data.expirationTsEpoch = res.expirationTsEpoch;
 
     context.store.setItem('gp-api:key', JSON.stringify(data));
     console.log('[insomnia-plugin-gp] key registration completed', data);
@@ -78,10 +130,10 @@ const session = async ({ context }) => {
   } else {
     console.error('[insomnia-plugin-gp] error requesting key registration', res);
   }
-};
+}
 
 const encryptRequest = async (context) => {
-  const data = await session({ context });
+  const data = await session(context);
 
   if (data.kxid) {
     context.request.setHeader('fp-key-id', data.kxid);
@@ -114,7 +166,7 @@ const decryptResponse = async (context) => {
     if (context.response.getBody().length > 0) {
       var body = JSON.parse(context.response.getBody());
 
-      const keyData = await session({ context });
+      const keyData = await session(context);
       var sharedSecret = JSON.parse(encryptor.decodeMessage(keyData.ss));
 
       if (body.encryptedData) {
@@ -138,8 +190,22 @@ module.exports.workspaceActions = [
   {
     label: 'GP - Clear Security Session',
     icon: 'fa-trash',
-    action: async (context, models) => {
+    action: async (context) => {
       context.store.removeItem('gp-api:key');
+    },
+  },
+  {
+    label: 'GP - Configure',
+    icon: 'fa-cogs',
+    action: async (context) => {
+      changeConfiguration(context);
+    },
+  },
+  {
+    label: 'GP - Reset to Defaults',
+    icon: 'fa-undo',
+    action: async (context) => {
+      context.store.removeItem('gp-api:config');
     },
   },
 ];
@@ -154,8 +220,11 @@ module.exports.templateTags = [
     description: 'Current Garmin Pay session keyId, if exists',
     args: [],
     async run(context) {
-      const keyData = await session({ context });
-      return keyData.kxid;
+      var str = await context.store.getItem('gp-api:key');
+      if (str) {
+        var keyData = JSON.parse(str);
+        return keyData.kxid;
+      }
     },
   },
 ];
