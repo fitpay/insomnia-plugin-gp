@@ -2,7 +2,7 @@ var sjcl = require('./sjcl');
 var encryptor = require('./encryptor');
 
 const session = async ({ context }) => {
-  var str = await context.store.getItem('gp_key');
+  var str = await context.store.getItem('gp-api:key');
 
   // if we have a cached key, let's make sure it's still useable
   if (str) {
@@ -14,11 +14,11 @@ const session = async ({ context }) => {
       var expirationTs = new Date(date.expirationTsEpoch);
 
       // use a bit of a buffer (60s) to account for clock drift
-      if (new Date().getTime() - 60000 < expirationTs) { 
+      if (new Date().getTime() - 60000 < expirationTs) {
         console.log('[insomnia-plugin-gp] returning cached session', data);
         return data;
       } else {
-        context.store.removeItem('gp_key');
+        context.store.removeItem('gp-api:key');
       }
     } else {
       // no expirationTs returned by the server, so force a validation to see if the key is still good
@@ -27,7 +27,7 @@ const session = async ({ context }) => {
         console.log('[insomnia-plugin-gp] returning cached session', data);
         return data;
       } else {
-        context.store.removeItem('gp_key');
+        context.store.removeItem('gp-api:key');
       }
     }
   }
@@ -72,7 +72,7 @@ const session = async ({ context }) => {
     data.spk = res.serverPublicKey;
     data.expirationTsEpoch = res.expirationTsEpoch;
 
-    context.store.setItem('gp_key', JSON.stringify(data));
+    context.store.setItem('gp-api:key', JSON.stringify(data));
     console.log('[insomnia-plugin-gp] key registration completed', data);
     return data;
   } else {
@@ -139,7 +139,7 @@ module.exports.workspaceActions = [
     label: 'GP - Clear Security Session',
     icon: 'fa-trash',
     action: async (context, models) => {
-      context.store.removeItem('gp_key');
+      context.store.removeItem('gp-api:key');
     },
   },
 ];
