@@ -135,7 +135,7 @@ async function session(context) {
 const encryptRequest = async (context) => {
   const data = await session(context);
 
-  if (data.kxid) {
+  if (data && data.kxid) {
     context.request.setHeader('fp-key-id', data.kxid);
   }
 
@@ -144,12 +144,18 @@ const encryptRequest = async (context) => {
     var requestBody = JSON.parse(body.text);
 
     if (requestBody.encryptedData) {
-      console.log('[insomnia-plugin-gp] encrypt request: ', data.kxid);
+      var ss = (data && data.ss) ? JSON.parse(encryptor.decodeMessage(data.ss)) : undefined;
 
-      var ss = JSON.parse(encryptor.decodeMessage(data.ss));
-      var encryptedData = encryptor.encrypt(requestBody.encryptedData, ss, { kid: data.kxid });
-      requestBody.encryptedData = encryptedData;
-      body.text = JSON.stringify(requestBody);
+      if (!ss) {
+        console.log('[insomnia-plugin-gp] encrypt request: ', data.kxid);
+
+        var encryptedData = encryptor.encrypt(requestBody.encryptedData, ss, { kid: data.kxid });
+        requestBody.encryptedData = encryptedData;
+
+        body.text = JSON.stringify(requestBody);
+      }
+    } else {
+      console.log('[insomnia-plugin-gp] encryption skipped, no shared secret available', keyData);
     }
   }
 };
@@ -167,21 +173,25 @@ const decryptResponse = async (context) => {
       var body = JSON.parse(context.response.getBody());
 
       const keyData = await session(context);
-      var sharedSecret = JSON.parse(encryptor.decodeMessage(keyData.ss));
+      var sharedSecret = (keyData && keyData.ss) ? JSON.parse(encryptor.decodeMessage(keyData.ss)) : undefined;
 
-      if (body.encryptedData) {
-        body.encryptedData = transformEncryptedData(sharedSecret, body.encryptedData);
-      }
-
-      if (body.results) {
-        for (var i = 0; i < body.results.length; i++) {
-          if (body.results[i].encryptedData) {
-            body.results[i].encryptedData = transformEncryptedData(sharedSecret, body.results[i].encryptedData);
+      if (!sharedSecret) {
+        if (body.encryptedData) {
+          body.encryptedData = transformEncryptedData(sharedSecret, body.encryptedData);
+        }
+  
+        if (body.results) {
+          for (var i = 0; i < body.results.length; i++) {
+            if (body.results[i].encryptedData) {
+              body.results[i].encryptedData = transformEncryptedData(sharedSecret, body.results[i].encryptedData);
+            }
           }
         }
+  
+        context.response.setBody(JSON.stringify(body));
       }
-
-      context.response.setBody(JSON.stringify(body));
+    } else {
+      console.log('[insomnia-plugin-gp] decryption skipped, no shared secret available', keyData);
     }
   }
 };
