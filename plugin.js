@@ -175,7 +175,7 @@ const decryptResponse = async (context) => {
       const keyData = await session(context);
       var sharedSecret = (keyData && keyData.ss) ? JSON.parse(encryptor.decodeMessage(keyData.ss)) : undefined;
 
-      if (!sharedSecret) {
+      if (sharedSecret) {
         if (body.encryptedData) {
           body.encryptedData = transformEncryptedData(sharedSecret, body.encryptedData);
         }
@@ -189,10 +189,10 @@ const decryptResponse = async (context) => {
         }
   
         context.response.setBody(JSON.stringify(body));
+      } else {
+        console.log('[insomnia-plugin-gp] decryption skipped, no shared secret available', keyData);
       }
-    } else {
-      console.log('[insomnia-plugin-gp] decryption skipped, no shared secret available', keyData);
-    }
+    } 
   }
 };
 
