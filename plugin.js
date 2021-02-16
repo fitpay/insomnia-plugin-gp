@@ -146,17 +146,17 @@ const encryptRequest = async (context) => {
     if (requestBody.encryptedData) {
       var ss = (data && data.ss) ? JSON.parse(encryptor.decodeMessage(data.ss)) : undefined;
 
-      if (!ss) {
+      if (ss) {
         console.log('[insomnia-plugin-gp] encrypt request: ', data.kxid);
 
         var encryptedData = encryptor.encrypt(requestBody.encryptedData, ss, { kid: data.kxid });
         requestBody.encryptedData = encryptedData;
 
         body.text = JSON.stringify(requestBody);
+      } else {
+        console.log('[insomnia-plugin-gp] encryption skipped, no shared secret available', keyData);
       }
-    } else {
-      console.log('[insomnia-plugin-gp] encryption skipped, no shared secret available', keyData);
-    }
+    } 
   }
 };
 
